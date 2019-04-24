@@ -44,3 +44,15 @@ The model has be trained from scratch on a GTX970M 3GB.
 Predicting images of 1918*1280 takes 1.5GB of memory.
 Training takes approximately 3GB, so if you are a few MB shy of memory, consider turning off all graphical displays.
 This assumes you use bilinear up-sampling, and not transposed convolution in the model.
+
+## Model export to [OpenVINO™ Toolkit](https://software.intel.com/en-us/openvino-toolkit)
+
+1. Install **OpenVINO Toolkit** - [Linux installation guide](https://software.intel.com/en-us/articles/OpenVINO-Install-Linux)
+
+2. Convert model to ONNX:
+* `python pytorch2onnx.py`
+
+3. Convert model from ONNX to IR of Inference Engine:
+* `python /opt/intel/openvino/deployment_tools/model_optimizer/mo_onnx.py --input_model ./Unet.onnx`
+
+4. You should be able to see `Unet.xml` and `Unet.bin` files at the root of the directory.
