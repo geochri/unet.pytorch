@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from dice_loss import dice_coeff
 
 
-def eval_net(net, dataset, gpu=False):
+def eval_net(net, dataset, gpu=True):
     """Evaluation without the densecrf with the dice coefficient"""
     net.eval()
     tot = 0

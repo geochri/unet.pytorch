@@ -1,6 +1,6 @@
 import sys
 import os
-from optparse import OptionParser
+from argparse import ArgumentParser
 import numpy as np
 
 import torch
@@ -12,18 +12,12 @@ from eval import eval_net
 from unet import UNet
 from utils import get_ids, split_ids, split_train_val, get_imgs_and_masks, batch
 
-def train_net(net,
-              epochs=5,
-              batch_size=1,
-              lr=0.1,
-              val_percent=0.05,
-              save_cp=True,
-              gpu=False,
-              img_scale=0.5):
 
-    dir_img = 'data/train/'
-    dir_mask = 'data/train_masks/'
-    dir_checkpoint = 'checkpoints/'
+def train_net(args, net, val_percent=0.05, save_cp=True):
+
+    dir_img = os.path.join(args.dataset_folder, 'data/train/')
+    dir_mask = os.path.join(args.dataset_folder, 'data/train_masks/')
+    dir_checkpoint = os.path.join(args.dataset_folder,'checkpoints/')
 
     ids = get_ids(dir_img)
     ids = split_ids(ids)
@@ -38,39 +32,38 @@ def train_net(net,
         Training size: {}
         Validation size: {}
         Checkpoints: {}
-        CUDA: {}
-    '''.format(epochs, batch_size, lr, len(iddataset['train']),
-               len(iddataset['val']), str(save_cp), str(gpu)))
+    '''.format(args.epochs, args.batch_size, args.lr, len(iddataset['train']),
+               len(iddataset['val']), str(save_cp)))
 
     N_train = len(iddataset['train'])
 
     optimizer = optim.SGD(net.parameters(),
-                          lr=lr,
+                          lr=args.lr,
                           momentum=0.9,
                           weight_decay=0.0005)
 
     criterion = nn.BCELoss()
 
-    for epoch in range(epochs):
-        print('Starting epoch {}/{}.'.format(epoch + 1, epochs))
+    for epoch in range(args.epochs):
+        print('Starting epoch {}/{}.'.format(args.epochs + 1, args.epochs))
         net.train()
 
         # reset the generators
-        train = get_imgs_and_masks(iddataset['train'], dir_img, dir_mask, img_scale)
-        val = get_imgs_and_masks(iddataset['val'], dir_img, dir_mask, img_scale)
+        train = get_imgs_and_masks(iddataset['train'], dir_img, dir_mask, args.img_scale)
+        val = get_imgs_and_masks(iddataset['val'], dir_img, dir_mask, args.img_scale)
 
         epoch_loss = 0
 
-        for i, b in enumerate(batch(train, batch_size)):
+        for i, b in enumerate(batch(train, args.batch_size)):
             imgs = np.array([i[0] for i in b]).astype(np.float32)
             true_masks = np.array([i[1] for i in b])
 
             imgs = torch.from_numpy(imgs)
             true_masks = torch.from_numpy(true_masks)
 
-            if gpu:
-                imgs = imgs.cuda()
-                true_masks = true_masks.cuda()
+            # if gpu:
+            imgs = imgs.cuda()
+            true_masks = true_masks.cuda()
 
             masks_pred = net(imgs)
             masks_probs_flat = masks_pred.view(-1)
@@ -80,7 +73,7 @@ def train_net(net,
             loss = criterion(masks_probs_flat, true_masks_flat)
             epoch_loss += loss.item()
 
-            print('{0:.4f} --- loss: {1:.6f}'.format(i * batch_size / N_train, loss.item()))
+            print('{0:.4f} --- loss: {1:.6f}'.format(i * args.batch_size / N_train, loss.item()))
 
             optimizer.zero_grad()
             loss.backward()
@@ -89,7 +82,7 @@ def train_net(net,
         print('Epoch finished ! Loss: {}'.format(epoch_loss / i))
 
         if 1:
-            val_dice = eval_net(net, val, gpu)
+            val_dice = eval_net(net, val)
             print('Validation Dice Coeff: {}'.format(val_dice))
 
         if save_cp:
@@ -98,49 +91,24 @@ def train_net(net,
             print('Checkpoint {} saved !'.format(epoch + 1))
 
 
-
-def get_args():
-    parser = OptionParser()
-    parser.add_option('-e', '--epochs', dest='epochs', default=5, type='int',
-                      help='number of epochs')
-    parser.add_option('-b', '--batch-size', dest='batchsize', default=10,
-                      type='int', help='batch size')
-    parser.add_option('-l', '--learning-rate', dest='lr', default=0.1,
-                      type='float', help='learning rate')
-    parser.add_option('-g', '--gpu', action='store_true', dest='gpu',
-                      default=False, help='use cuda')
-    parser.add_option('-c', '--load', dest='load',
-                      default=False, help='load file model')
-    parser.add_option('-s', '--scale', dest='scale', type='float',
-                      default=0.5, help='downscaling factor of the images')
-
-    (options, args) = parser.parse_args()
-    return options
-
 if __name__ == '__main__':
-    args = get_args()
+    parser = ArgumentParser(description='U-Net training script')
+    parser.add_argument('--dataset_folder', type=str, required=True, help='Path to dataset folder')
+    parser.add_argument('--epochs', type=int, default=5, help='Number of training epochs')
+    parser.add_argument('--batch_size', type=int, default=4, help='Training batch size')
+    parser.add_argument('--lr', type=float, default=0.1,  help='Learning rate')
+    parser.add_argument('--pretrained', type=str, default='', help='Pretrained file model')
+    parser.add_argument('--img_scale', type=float, default=0.5, help='Downscaling factor of the images')
+
+    args = parser.parse_args()
 
     net = UNet(n_channels=3, n_classes=1)
 
-    if args.load:
-        net.load_state_dict(torch.load(args.load))
-        print('Model loaded from {}'.format(args.load))
+    if args.pretrained:
+        net.load_state_dict(torch.load(args.pretrained))
+        print('Model loaded from {}'.format(args.pretrained))
 
-    if args.gpu:
-        net.cuda()
-        # cudnn.benchmark = True # faster convolutions, but more memory
+    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+    net.to(device)
 
-    try:
-        train_net(net=net,
-                  epochs=args.epochs,
-                  batch_size=args.batchsize,
-                  lr=args.lr,
-                  gpu=args.gpu,
-                  img_scale=args.scale)
-    except KeyboardInterrupt:
-        torch.save(net.state_dict(), 'INTERRUPTED.pth')
-        print('Saved interrupt')
-        try:
-            sys.exit(0)
-        except SystemExit:
-            os._exit(0)
+    train_net(args, net)
