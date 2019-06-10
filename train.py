@@ -18,6 +18,8 @@ def train_net(args, net, val_percent=0.05, save_cp=True):
     dir_img = os.path.join(args.dataset_folder, 'data/train/')
     dir_mask = os.path.join(args.dataset_folder, 'data/train_masks/')
     dir_checkpoint = os.path.join(args.dataset_folder,'checkpoints/')
+    if not os.path.exists(dir_checkpoint):
+        os.makedirs(dir_checkpoint)
 
     ids = get_ids(dir_img)
     ids = split_ids(ids)
