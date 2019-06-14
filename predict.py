@@ -17,7 +17,7 @@ def predict_img(net,
                 full_img,
                 scale_factor=0.5,
                 out_threshold=0.5,
-                use_dense_crf=True,
+                use_dense_crf=False,
                 use_gpu=True):
 
     net.eval()
